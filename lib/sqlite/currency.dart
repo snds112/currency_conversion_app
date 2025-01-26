@@ -40,20 +40,7 @@ class Currency{
       'favorited': favorited
     };
   }
- /* factory Currency.fromJson(Map<String, dynamic> json) {
-    // Extract code and name from the key-value pair
-    String code = json.keys.first;
-    String name = json[code] as String;
-    return Currency(short_name: code, long_name: name, rate : 0.0);
-  }
-*/
 
-  /*static List<Currency> buildCurrencyNamesList(String jsonString) {
-    final Map<String, dynamic> jsonData = json.decode(jsonString);
-    return jsonData.entries.map((entry) {
-      return Currency(short_name: entry.key, long_name: entry.value, rate : 0.0);
-    }).toList();
-  }*/
 }
 
 

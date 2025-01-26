@@ -10,18 +10,85 @@ import 'package:currency_conversion/sqlite/history.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-
-  // Initialize the database and populate it with API data
-
   await SettingsSqlite.instance.initializeDefaultSettings();
   Settings settings = await SettingsSqlite.instance.getSettings();
 
   await CurrencySqlite.instance.importAllCurrenciesToDb(settings.base_currency);
 
-  runApp(MaterialApp(
-      themeMode: ThemeMode.dark,
-      debugShowCheckedModeBanner: false,
-      home: CurrencyConversion(settings: settings)));
+  runApp(
+    MyApp(
+      settings: settings,
+    ),
+  );
+}
+
+class MyApp extends StatefulWidget {
+  final Settings settings;
+
+  const MyApp({super.key, required this.settings});
+
+  @override
+  _MyAppState createState() => _MyAppState();
+
+  static _MyAppState of(BuildContext context) =>
+      context.findAncestorStateOfType<_MyAppState>()!;
+}
+
+class _MyAppState extends State<MyApp> {
+  late Settings settings;
+
+  @override
+  void initState() {
+    super.initState();
+    settings = widget.settings;
+    _themeMode = (settings.dark_mode.index == 0)
+        ? ThemeMode.dark
+        : (settings.dark_mode.index == 1)
+            ? ThemeMode.light
+            : ThemeMode.system;
+  }
+
+  ThemeMode _themeMode = ThemeMode.system;
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+        title: 'Currency Conversion',
+        theme: ThemeData.light(),
+        darkTheme: ThemeData.dark(),
+        themeMode: _themeMode,
+        debugShowCheckedModeBanner: false,
+        home: CurrencyConversion(settings: settings));
+  }
+
+  void changeTheme(String theme) async {
+    darkModeEnum inputtheme = darkModeEnum.dark;
+
+    setState(() {
+      if (theme == 'dark') {
+        _themeMode = ThemeMode.dark;
+      } else if (theme == 'light') {
+        inputtheme = darkModeEnum.light;
+        _themeMode = ThemeMode.light;
+      } else {
+        _themeMode = ThemeMode.system;
+        inputtheme = darkModeEnum.system;
+      }
+    });
+    Settings newsettings = Settings(
+        dark_mode: inputtheme,
+        history: settings.history,
+        base_currency: settings.base_currency,
+        vat: settings.vat);
+    setState(() {
+      settings = newsettings;
+    });
+    await SettingsSqlite.instance.updateSettings(newsettings);
+  }
+
+  ThemeMode getTheme() {
+    return _themeMode;
+  }
 }
 
 class HistoryCard extends StatelessWidget {
@@ -153,11 +220,30 @@ class CurrencyConversion extends StatefulWidget {
 
 class _CurrencyConversionState extends State<CurrencyConversion> {
   late Settings _settings;
+  bool _isHistorySwitched = false;
+  int _selectedOption = 0;
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _appBarColor = Theme.of(context).brightness == Brightness.light
+        ? Colors.deepPurple.shade200
+        :Colors.deepPurple.shade900 ;
+    _buttonColor = Theme.of(context).brightness == Brightness.light
+        ? Colors.white
+        : Colors.black;
+    _inputColor = Theme.of(context).brightness == Brightness.light
+        ? Colors.deepPurple.shade200
+        :Colors.deepPurple.shade900 ;
 
+  }
   @override
   void initState() {
     super.initState();
     _settings = widget.settings;
+    _isHistorySwitched = (_settings.history == 1) ? true : false;
+    _selectedOption = (_settings.dark_mode.index);
+    _newbasecurrency=_settings.base_currency;
+
   }
 
   DateTime? _selectedDate;
@@ -177,6 +263,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
   final _currency_search_controller = TextEditingController();
   final _explore_currency_search_controller = TextEditingController();
   final _custom_vat_controller = TextEditingController();
+  final _custom_vat_controller_settings = TextEditingController();
   bool _custom_vat = false;
   bool _custom_date = true;
   bool _show_result = false;
@@ -187,13 +274,19 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
   final int _input_vat = 0;
   String _conversion_result = '';
 
+  late Color _buttonColor;
+  late Color _appBarColor;
+  late Color _inputColor;
+  String _newbasecurrency='';
+  bool  _searchingforsettingspage=false;
+
   @override
   Widget build(BuildContext context) {
     //homepage
     return Scaffold(
       appBar: AppBar(
         title: const Text('Currency Conversion'),
-        backgroundColor: Colors.deepPurple.shade200,
+        backgroundColor: _appBarColor,
         centerTitle: true,
       ),
       body: IndexedStack(
@@ -253,18 +346,20 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
       }
 
       return list;
-    }else if (_stack_index == 1) {
-      return [
-        FloatingActionButton(
-          onPressed: (){setState(() {
-            _explore_currency_search_controller.clear();
-          });},
+    } else if (_stack_index == 1) {
+      List<FloatingActionButton> list = [];
+      if (_explore_currency_search_controller.text.isNotEmpty) {
+        list.add(FloatingActionButton(
+          onPressed: () {
+            setState(() {
+              _explore_currency_search_controller.clear();
+            });
+          },
           child: const Icon(Icons.keyboard_return_rounded),
-        ),
-
-      ];
-    }
-    else if (_stack_index == 3) {
+        ));
+      }
+      return list;
+    } else if (_stack_index == 3) {
       return [
         FloatingActionButton(
           onPressed: _clearHistory,
@@ -276,6 +371,15 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
           },
           child: const Icon(Icons.home_filled),
         ),
+      ];
+    }
+    else if (_stack_index == 4 && _searchingforsettingspage) {
+      return [
+        FloatingActionButton(
+          onPressed: () {_switchToPage(2);},
+          child: const Icon(Icons.cancel),
+        ),
+
       ];
     }
     return [];
@@ -294,8 +398,9 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
               margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
               decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(20),
-                  color: Colors.deepPurple.shade100),
+                borderRadius: BorderRadius.circular(20),
+                color: _inputColor
+              ),
               child: Row(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -318,7 +423,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                         onPressed: () => setState(() {
                               _input_controller.clear();
                             }),
-                        backgroundColor: Colors.white,
+                        backgroundColor:_buttonColor,
                         child: const Icon(Icons.clear))
                   ]),
             ),
@@ -327,7 +432,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
               margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  color: Colors.deepPurple.shade100),
+                  color: _inputColor),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -336,9 +441,10 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                       setState(() {
                         _conversion_search_option = false;
                         _stack_index = 4;
+                        _searchingforsettingspage=false;
                       });
                     },
-                    backgroundColor: Colors.white,
+                    backgroundColor: _buttonColor,
                     child: Text(_from_conversion.short_name),
                   ),
                   FloatingActionButton(
@@ -362,7 +468,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                             favorited: 0);
                       });
                     },
-                    backgroundColor: Colors.white,
+                    backgroundColor:_buttonColor,
                     child: const Icon(Icons.swap_horiz),
                   ),
                   FloatingActionButton(
@@ -370,9 +476,10 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                       setState(() {
                         _conversion_search_option = true;
                         _stack_index = 4;
+                        _searchingforsettingspage=false;
                       });
                     },
-                    backgroundColor: Colors.white,
+                    backgroundColor: _buttonColor,
                     child: Text(_to_conversion.short_name),
                   ),
                   Container(
@@ -381,7 +488,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                       onPressed: () {
                         _clearCurrencySelection();
                       },
-                      backgroundColor: Colors.white,
+                      backgroundColor: _buttonColor,
                       child: const Icon(Icons.clear),
                     ),
                   ),
@@ -394,7 +501,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
               margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  color: Colors.deepPurple.shade100),
+                  color: _inputColor),
               child: Row(
                 mainAxisSize: MainAxisSize.max,
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -466,7 +573,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
               margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  color: Colors.deepPurple.shade100),
+                  color: _inputColor),
               child: Row(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.start,
@@ -490,7 +597,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                                 _explore_currency_conversion_search_term =
                                     _explore_currency_search_controller.text;
                               }),
-                          backgroundColor: Colors.white,
+                          backgroundColor: _buttonColor,
                           child: const Icon(Icons.search)),
                     )
                   ]),
@@ -503,7 +610,156 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
   }
 
   Widget _settingsPage() {
-    return const Placeholder();
+    return Container(
+      alignment: Alignment.topCenter,
+      child: Padding(
+        padding: const EdgeInsets.all(8.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.max,
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            _themeRadioList(),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('History: ', style: TextStyle(fontSize: 18.0)),
+                Switch(
+                  value: _isHistorySwitched,
+                  onChanged: (bool newValue) async {
+                    Settings newsettings = Settings(
+                        dark_mode: _settings.dark_mode,
+                        history: newValue ? 1 : 0,
+                        base_currency: _settings.base_currency,
+                        vat: _settings.vat);
+                    await SettingsSqlite.instance.updateSettings(newsettings);
+                    setState(() {
+                      _settings = newsettings;
+                      _isHistorySwitched = newValue;
+                    });
+                  },
+                ),
+              ],
+            ),
+            Row( mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('History: ', style: TextStyle(fontSize: 18.0)),
+                FloatingActionButton(
+                  onPressed: () {
+                    setState(() {
+                      _conversion_search_option = false;
+                      _stack_index = 4;
+                      _searchingforsettingspage = true;
+                    });
+                  },
+                  backgroundColor: _buttonColor,
+                  child: Text(_newbasecurrency),
+                )
+              ],
+            ),
+            Row( mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                 Text('VAT: current = ${_settings.vat.toString()}', style: TextStyle(fontSize: 18.0)),
+        SizedBox(
+          width: 50,
+          child: TextField(
+
+            textAlign: TextAlign.center,
+            keyboardType: const TextInputType.numberWithOptions(
+                signed: false, decimal: true),
+            controller: _custom_vat_controller_settings,
+            onEditingComplete: () async{
+              Settings newsettings = Settings(
+                  dark_mode: _settings.dark_mode,
+                  history: _settings.history,
+                  base_currency: _settings.base_currency,
+                  vat: int.parse(_custom_vat_controller_settings.text));
+              await SettingsSqlite.instance.updateSettings(newsettings);
+              setState(() {
+                _settings = newsettings;
+
+              });
+            },
+
+          ),
+        )
+              ],
+            ),
+
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _themeRadioList() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: <Widget>[
+        Row(
+          children: [
+            Text('Theme :', style: const TextStyle(fontSize: 20.0)),
+          ],
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            Row(
+              children: [
+                Radio<int>(
+                  value: 0,
+                  groupValue: _selectedOption,
+                  onChanged: (int? value) {
+                    setState(() {
+
+                      MyApp.of(context).changeTheme('dark');
+                      _selectedOption = value!;
+                    });
+
+                  },
+                ),
+                Text('dark'),
+              ],
+            ),
+            Row(
+              children: [
+                Radio<int>(
+                  value: 1,
+                  groupValue: _selectedOption,
+                  onChanged: (int? value) {
+                    setState(() {
+
+                      MyApp.of(context).changeTheme('light');
+
+                      _selectedOption = value!;
+                    });
+
+                  },
+                ),
+                Text('light'),
+              ],
+            ),
+            Row(
+              children: [
+                Radio<int>(
+                  value: 2,
+                  groupValue: _selectedOption,
+                  onChanged: (int? value) {
+                    setState(() {
+
+                      MyApp.of(context).changeTheme('system');
+
+                      _selectedOption = value!;
+                    });
+
+                  },
+                ),
+                Text('system'),
+              ],
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _showVatInputField() {
@@ -564,7 +820,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
         child: Container(
           padding: const EdgeInsets.all(8.0),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: _buttonColor,
             borderRadius: BorderRadius.circular(10.0),
           ),
           child: Text(
@@ -587,7 +843,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
         margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
         decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            color: Colors.deepPurple.shade100),
+            color: _inputColor),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -655,7 +911,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
     });
   }
 
-  Widget _showCurrencyConversionSearchResultsTable() {
+  Widget _showCurrencyConversionSearchResultsTable(bool _isconvertpage) {
     return FutureBuilder(
         future:
             _currencysqlite.searchCurrency(_currency_conversion_search_term),
@@ -679,16 +935,35 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                             leading: Text(currencies[index].short_name),
                             title: Text(currencies[index].long_name),
                             subtitle: Text('Rate: ${currencies[index].rate}'),
-                            onTap: () {
+                            onTap: () async{
                               setState(() {
                                 _currency_search_controller.clear();
-                                _stack_index = 0;
-                                if (_conversion_search_option) {
+
+                                if(_isconvertpage){
+                                  _stack_index = 0;
+                                  if (_conversion_search_option) {
                                   _to_conversion = currencies[index];
                                 } else {
                                   _from_conversion = currencies[index];
+                                }}
+
+                                else{
+                                  _stack_index = 2;
+                                 _newbasecurrency= currencies[index].short_name;
                                 }
                               });
+                              if(!_isconvertpage){
+                                Settings newsettings = Settings(
+                                    dark_mode: _settings.dark_mode,
+                                    history: _settings.history,
+                                    base_currency: _newbasecurrency,
+                                    vat: _settings.vat);
+                                await SettingsSqlite.instance.updateSettings(newsettings);
+                                await CurrencySqlite.instance.importAllCurrenciesToDb(_newbasecurrency);
+                                setState(() {
+                                  _settings = newsettings;
+                                });
+                              }
                             },
                           ),
                         );
@@ -717,7 +992,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
               margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
               decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  color: Colors.deepPurple.shade100),
+                  color: _inputColor),
               child: Row(
                   mainAxisSize: MainAxisSize.max,
                   mainAxisAlignment: MainAxisAlignment.start,
@@ -741,12 +1016,12 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                                 _currency_conversion_search_term =
                                     _currency_search_controller.text;
                               }),
-                          backgroundColor: Colors.white,
+                          backgroundColor: _buttonColor,
                           child: const Icon(Icons.search)),
                     )
                   ]),
             ),
-            _showCurrencyConversionSearchResultsTable(),
+            _showCurrencyConversionSearchResultsTable(!_searchingforsettingspage),
           ],
         ),
       ),
@@ -761,7 +1036,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
         margin: const EdgeInsets.fromLTRB(0, 8, 0, 8),
         decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(20),
-            color: Colors.deepPurple.shade100),
+            color: _inputColor),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -834,8 +1109,7 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
         future: (_explore_currency_search_controller.text.isNotEmpty)
             ? _currencysqlite
                 .searchCurrency(_explore_currency_conversion_search_term)
-            : _currencysqlite
-                .getFavoriteCurrency(),
+            : _currencysqlite.getFavoriteCurrency(),
         builder: (context, snapshot) {
           if (!snapshot.hasData) {
             return const Center(
@@ -851,8 +1125,8 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                     child: ListView.builder(
                       itemCount: currencies.length,
                       itemBuilder: (context, index) {
-                       bool isFavorited = currencies[index].favorited==1;
-                      Currency c = currencies[index];
+                        bool isFavorited = currencies[index].favorited == 1;
+                        Currency c = currencies[index];
                         return Card(
                           child: ListTile(
                             leading: Text(currencies[index].short_name),
@@ -860,17 +1134,17 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
                             subtitle: Text('Rate: ${currencies[index].rate}'),
                             trailing: IconButton(
                               icon: Icon(
-                                isFavorited ? Icons.star : Icons.star_border,
-                                color: isFavorited ? Colors.yellow.shade700 : null
-                              ),
-                              onPressed: () async{
-                                int newfav = isFavorited ? 0:1;
-                                await _currencysqlite.updateCurrencyFavorited(c, newfav);
+                                  isFavorited ? Icons.star : Icons.star_border,
+                                  color: isFavorited
+                                      ? Colors.yellow.shade700
+                                      : null),
+                              onPressed: () async {
+                                int newfav = isFavorited ? 0 : 1;
+                                await _currencysqlite.updateCurrencyFavorited(
+                                    c, newfav);
                                 debugPrint(c.toString());
                                 debugPrint((!isFavorited).toString());
-                                setState(() {
-
-                                });
+                                setState(() {});
                               },
                             ),
                             onTap: () {},
@@ -885,4 +1159,6 @@ class _CurrencyConversionState extends State<CurrencyConversion> {
           }
         });
   }
+
+
 }

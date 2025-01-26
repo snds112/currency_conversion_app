@@ -3,7 +3,7 @@
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
-enum darkModeEnum {system, dark, light} //use .name for string
+enum darkModeEnum { dark, light,system} //use .name for string
 extension ParseToString on darkModeEnum {
   String toShortString() {
     return toString().split('.').last;
@@ -53,7 +53,7 @@ class Settings{
   }
   Map<String, Object?> toMap() {
     return {
-      'dark_mode': dark_mode,
+      'dark_mode': dark_mode.name,
       'history': history,
       'base currency': base_currency,
       'vat': vat,
@@ -141,9 +141,14 @@ class SettingsSqlite{
 
 
   }
-  Future<void> updateSettings(Settings settings) async{
+  Future<void> updateSettings(Settings s) async{
     final db = await database;
-    db?.update(_tableName,settings.toMap(),where: 'id = 1');
+    db?.update(_tableName,{
+      _tableDarkModeColumnName: s.dark_mode.name,
+      _tableHistoryColumnName: s.history.toString(),
+      _tableBaseCurrencyColumnName: s.base_currency,
+      _tableVatColumnName:s.vat.toString(),
+    },where: 'id = 1');
   }
 
   Future<void> insertDefaultSettings() async{

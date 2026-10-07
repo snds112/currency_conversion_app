@@ -4,7 +4,7 @@ Un convertisseur de devises simple construit avec Flutter pour un cours d'introd
 
 ## À propos
 
-Application permettant de convertir entre plusieurs devises via une API publique gratuite (taux mis à jour quotidiennement).
+Application permettant de convertir entre plusieurs devises via une API publique gratuite.
 
 ## Stack technique
 
